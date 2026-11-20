@@ -24,7 +24,6 @@ async function downloadResponse(res, fallbackName) {
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  // try filename from content-disposition
   let name = fallbackName;
   const cd = res.headers.get("content-disposition");
   if (cd) {
@@ -36,8 +35,100 @@ async function downloadResponse(res, fallbackName) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function downloadTextFile(text, filename) {
+  const blob = new Blob([text], {type: "text/plain;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function postFile(url, formData) {
   return fetch(url, { method: "POST", body: formData, cache: "no-store" });
+}
+
+// ---------- NAYA: Browser se Translate, Server beech me nahi ----------
+function cleanLang(v) {
+  v = String(v || "en").toLowerCase().trim();
+  const map = {hindi:"hi", english:"en", spanish:"es", french:"fr", german:"de", bengali:"bn", bangla:"bn", tamil:"ta", telugu:"te", marathi:"mr", urdu:"ur", auto:"en", detect:"en"};
+  if (map[v]) return map[v];
+  if (v.includes("-")) v = v.split("-")[0];
+  if (v.includes("_")) v = v.split("_")[0];
+  return v;
+}
+
+function applyCasual(text, tgt) {
+  if (tgt !== "hi") return text;
+  const map = {"आप":"तुम", "आपका":"तुम्हारा", "आपकी":"तुम्हारी", "आपको":"तुमको", "कृपया":"please", "धन्यवाद":"thanks", "नमस्ते":"hi", "कैसे हैं":"कैसे हो"};
+  let out = text;
+  for (const k in map) out = out.split(k).join(map[k]);
+  return out;
+}
+
+async function translateOneChunk(text, src, tgt) {
+  // TRY 1: MyMemory - Browser se
+  try {
+    const r = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${src}|${tgt}&de=test@test.com`);
+    if (r.ok) {
+      const j = await r.json();
+      let t = j.responseData?.translatedText || "";
+      if (t && t.toLowerCase() !== text.toLowerCase()) return t;
+      if (j.matches) {
+        for (let m of j.matches) {
+          if (m.translation && m.translation.toLowerCase() !== text.toLowerCase()) return m.translation;
+        }
+      }
+    }
+  } catch(e) {}
+  // TRY 2: Lingva
+  try {
+    const r = await fetch(`https://lingva.ml/api/v1/${src}/${tgt}/${encodeURIComponent(text)}`);
+    if (r.ok) {
+      const j = await r.json();
+      if (j.translation) return j.translation;
+    }
+  } catch(e) {}
+  // TRY 3: Google GTX - Browser se
+  try {
+    const r = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${src}&tl=${tgt}&dt=t&q=${encodeURIComponent(text)}`);
+    if (r.ok) {
+      const j = await r.json();
+      return j[0].map(x => x[0]).join("");
+    }
+  } catch(e) {}
+  throw new Error("Teeno Translator busy hai, 10 sec ruk ke try karo");
+}
+
+async function translateBrowser(text, srcRaw, tgtRaw, casual, onProgress) {
+  const src = cleanLang(srcRaw);
+  const tgt = cleanLang(tgtRaw);
+  if (src === tgt) return text;
+  // MyMemory ko 500 char se zyada ek baar me nahi dena, tukdo me todo
+  const chunks = [];
+  let lines = text.split("\n");
+  let cur = "";
+  for (let line of lines) {
+    if ((cur + "\n" + line).length > 450) {
+      if (cur) chunks.push(cur);
+      cur = line;
+    } else {
+      cur = cur ? cur + "\n" + line : line;
+    }
+  }
+  if (cur) chunks.push(cur);
+  let out = [];
+  for (let i = 0; i < chunks.length; i++) {
+    if (!chunks[i].trim()) { out.push(chunks[i]); continue; }
+    const t = await translateOneChunk(chunks[i], src, tgt);
+    out.push(t);
+    if (onProgress) onProgress(Math.round(((i+1)/chunks.length)*100));
+    // Thoda ruk jao taaki Block na ho
+    if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 300));
+  }
+  let finalText = out.join("\n");
+  if (casual) finalText = applyCasual(finalText, tgt);
+  return finalText;
 }
 
 // ---------- Convert ----------
@@ -68,7 +159,7 @@ $("#convertBtn").addEventListener("click", async () => {
   }
 });
 
-// ---------- Translate file ----------
+// ---------- Translate file - AB BROWSER SE ----------
 $("#translateFileBtn").addEventListener("click", async () => {
   const file = $("#trFile").files[0];
   if (!file) { $("#tfMsg").textContent = "Please select a file."; return; }
@@ -79,6 +170,17 @@ $("#translateFileBtn").addEventListener("click", async () => {
   $("#tfMsg").textContent = "Translating...";
   setProgress($("#tfProgress"), 10);
   try {
+    const name = file.name.toLowerCase();
+    // TXT, SRT, VTT, ASS - Browser me hi Translate
+    if (name.endsWith(".txt") || name.endsWith(".srt") || name.endsWith(".vtt") || name.endsWith(".ass")) {
+      const text = await file.text();
+      const translated = await translateBrowser(text, src, tgt, casual, (p) => setProgress($("#tfProgress"), p));
+      downloadTextFile(translated, file.name.replace(/\.[^.]+$/, "") + "_translated" + file.name.slice(file.name.lastIndexOf(".")));
+      setProgress($("#tfProgress"), 100);
+      $("#tfMsg").textContent = "Done. Downloaded.";
+      return;
+    }
+    // PDF / DOCX - Abhi Server se (Render pe try karega)
     const fd = new FormData();
     fd.append("file", file);
     fd.append("src", src);
@@ -95,13 +197,13 @@ $("#translateFileBtn").addEventListener("click", async () => {
     $("#tfMsg").textContent = "Done. Downloaded.";
   } catch (e) {
     const m = (e && e.message) ? e.message : String(e);
-    $("#tfMsg").textContent = "Error: " + (m === "Failed to fetch" ? "Server se connect nahi ho paya. server.py run karo aur http://localhost:5000 use karo." : m);
+    $("#tfMsg").textContent = "Error: " + m;
   } finally {
     $("#translateFileBtn").disabled = false;
   }
 });
 
-// ---------- Manual text ----------
+// ---------- Manual text - AB BROWSER SE ----------
 $("#manualBtn").addEventListener("click", async () => {
   const q = $("#manualInput").value.trim();
   if (!q) { $("#manualOut").value = ""; return; }
@@ -111,18 +213,11 @@ $("#manualBtn").addEventListener("click", async () => {
     const src = $("#srcLang").value;
     const tgt = $("#tgtLang").value;
     const casual = $("#casual").checked;
-    const res = await fetch("/api/translate-text", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      cache: "no-store",
-      body: JSON.stringify({q, src, tgt, casual})
-    });
-    const j = await res.json();
-    if (!res.ok) throw new Error(j.error || res.statusText);
-    $("#manualOut").value = j.text;
+    const translated = await translateBrowser(q, src, tgt, casual, null);
+    $("#manualOut").value = translated;
   } catch (e) {
     const m = (e && e.message) ? e.message : String(e);
-    $("#manualOut").value = "Error: " + (m === "Failed to fetch" ? "Server se connect nahi ho paya. server.py run karo aur http://localhost:5000 use karo." : m);
+    $("#manualOut").value = "Error: " + m;
   } finally {
     $("#manualBtn").disabled = false;
   }
