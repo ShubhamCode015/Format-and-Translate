@@ -103,6 +103,110 @@ def translate_text():
         if not translated:
             return jsonify({"error": "Server Error: Abhi teeno Translator busy hai. 1 Minute ruk ke try karo. " + last_error}), 429
 
+# --- 1. TRANSLATE - Final, Language Naam Fix + Detail Error ---
+@app.route('/api/translate-text', methods=['POST'])
+def translate_text():
+    try:
+        data = {}
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+        if not data:
+            data = request.form.to_dict() or {}
+        if not data and request.data:
+            try:
+                import json
+                data = json.loads(request.data.decode('utf-8'))
+            except:
+                data = {"text": request.data.decode('utf-8')}
+
+        text = ""
+        for key in ['text','input','content','q','query','sentence','sourceText','originalText','inputText','source_text','toTranslate','data']:
+            if data.get(key):
+                text = str(data.get(key))
+                break
+        
+        raw_target = str(data.get('target_lang') or data.get('target') or data.get('to') or data.get('lang') or data.get('targetLanguage') or 'hi')
+        raw_source = str(data.get('source_lang') or data.get('source') or data.get('from') or data.get('sourceLanguage') or 'auto')
+
+        # --- Language Naam -> Code ---
+        # Hindi, hindi, HINDI, hi, hi-IN - sabko 'hi' bana dega
+        LANG_MAP = {
+            'hindi':'hi','english':'en','spanish':'es','french':'fr','german':'de','italian':'it',
+            'portuguese':'pt','russian':'ru','japanese':'ja','korean':'ko','chinese':'zh','arabic':'ar',
+            'bengali':'bn','bangla':'bn','tamil':'ta','telugu':'te','marathi':'mr','gujarati':'gu',
+            'punjabi':'pa','urdu':'ur','nepali':'ne','malayalam':'ml','kannada':'kn','odia':'or',
+            'assamese':'as','auto':'en','detect':'en','autodetect':'en'
+        }
+        def clean_lang(v):
+            v = str(v).lower().strip()
+            if v in LANG_MAP:
+                return LANG_MAP[v]
+            if '-' in v:  # hi-IN -> hi
+                v = v.split('-')[0]
+            if '_' in v:
+                v = v.split('_')[0]
+            return v[:2] if len(v) > 2 and v not in LANG_MAP else v
+
+        source = clean_lang(raw_source)
+        target = clean_lang(raw_target)
+
+        if not text or not text.strip():
+            return jsonify({"error": "Text khali hai"}), 400
+
+        import requests
+        translated = None
+        errors = []
+
+        # TRY 1: MyMemory Direct
+        try:
+            r = requests.get("https://api.mymemory.translated.net/get", params={
+                "q": text, "langpair": f"{source}|{target}", "de": "test@test.com"
+            }, timeout=15)
+            if r.status_code == 200:
+                j = r.json()
+                t = j.get('responseData', {}).get('translatedText', '')
+                if t and t.lower() != text.lower():
+                    translated = t
+                else:
+                    for m in j.get('matches', []):
+                        if m.get('translation') and m.get('translation').lower() != text.lower():
+                            translated = m.get('translation')
+                            break
+                    if not translated:
+                        errors.append(f"MyMemory: same text wapas aaya - {j.get('responseStatus')}")
+            else:
+                errors.append(f"MyMemory: Status {r.status_code} - {r.text[:100]}")
+        except Exception as e:
+            errors.append(f"MyMemory: {str(e)[:100]}")
+
+        # TRY 2: Lingva - Google ka Free Proxy, No Limit
+        if not translated:
+            try:
+                r = requests.get(f"https://lingva.ml/api/v1/{source}/{target}/{requests.utils.quote(text)}", timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+                if r.status_code == 200:
+                    translated = r.json().get('translation')
+                else:
+                    errors.append(f"Lingva: Status {r.status_code} - {r.text[:100]}")
+            except Exception as e:
+                errors.append(f"Lingva: {str(e)[:100]}")
+
+        # TRY 3: Google GTX Direct
+        if not translated:
+            try:
+                r = requests.get("https://translate.googleapis.com/translate_a/single", params={
+                    "client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text
+                }, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+                if r.status_code == 200:
+                    j = r.json()
+                    translated = "".join([x[0] for x in j[0] if x[0]])
+                else:
+                    errors.append(f"GoogleGTX: Status {r.status_code}")
+            except Exception as e:
+                errors.append(f"GoogleGTX: {str(e)[:100]}")
+
+        if not translated:
+            return jsonify({"error": f"Teeno fail. Source={source} Target={target} | " + " | ".join(errors)}), 429
+
         return jsonify({"success": True, "translatedText": translated, "translated_text": translated, "target": target})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
