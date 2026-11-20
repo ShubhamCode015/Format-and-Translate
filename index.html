@@ -6,34 +6,75 @@
 <meta name="theme-color" content="#0f172a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Format & Translate</title>
+<title>FileMorph - All-in-One File Converter & Translator</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <header>
-  <h1>Format &amp; Translate</h1>
+  <h1>FileMorph</h1>
   <span id="status" class="status">Online</span>
   <span class="madeby">Made by Shubham</span>
 </header>
 <nav class="tabs">
-  <button class="tab active" data-tab="translate">Translate</button>
-  <button class="tab" data-tab="convert">Convert</button>
+  <button class="tab active" data-tab="convert">Convert</button>
+  <button class="tab" data-tab="translate">Translate</button>
+  <button class="tab" data-tab="tools">Tools</button>
   <button class="tab" data-tab="about">About</button>
 </nav>
 <main>
-  <section id="tab-translate" class="panel active">
+  <!-- CONVERT -->
+  <section id="tab-convert" class="panel active">
     <div class="card">
-      <label>Subtitle file (.srt, .ass, .vtt, .sub)</label>
-      <input type="file" id="subFile" accept=".srt,.ass,.vtt,.sub,.txt">
+      <label>File choose karo</label>
+      <input type="file" id="convFile">
+    </div>
+    <div class="card">
+      <label>Target format</label>
+      <select id="targetFmt">
+        <option value="mp4">mp4 (video)</option>
+        <option value="mkv">mkv (video)</option>
+        <option value="webm">webm (video)</option>
+        <option value="avi">avi (video)</option>
+        <option value="mov">mov (video)</option>
+        <option value="mp3">mp3 (audio)</option>
+        <option value="m4a">m4a (audio)</option>
+        <option value="wav">wav (audio)</option>
+        <option value="ogg">ogg (audio)</option>
+        <option value="aac">aac (audio)</option>
+        <option value="flac">flac (audio)</option>
+        <option value="png">png (image)</option>
+        <option value="jpg">jpg (image)</option>
+        <option value="webp">webp (image)</option>
+        <option value="gif">gif (image)</option>
+        <option value="bmp">bmp (image)</option>
+        <option value="pdf">pdf</option>
+        <option value="docx">docx</option>
+        <option value="txt">txt</option>
+        <option value="csv">csv</option>
+        <option value="xlsx">xlsx</option>
+      </select>
+    </div>
+    <div class="card">
+      <button id="convertBtn" class="primary">Convert &amp; Download</button>
+      <div class="progress"><div id="cProgress" class="bar"></div></div>
+      <p id="cMsg" class="msg"></p>
+    </div>
+  </section>
+
+  <!-- TRANSLATE -->
+  <section id="tab-translate" class="panel">
+    <div class="card">
+      <label>File (PDF, Word, TXT, SRT, VTT, ASS)</label>
+      <input type="file" id="trFile" accept=".pdf,.docx,.txt,.srt,.vtt,.ass">
     </div>
     <div class="row">
       <div class="card">
         <label>From</label>
         <select id="srcLang">
+          <option value="auto">Auto</option>
           <option value="en">English</option>
           <option value="hi">Hindi</option>
-          <option value="auto">Auto</option>
           <option value="es">Spanish</option>
           <option value="fr">French</option>
           <option value="de">German</option>
@@ -68,9 +109,9 @@
       <label><input type="checkbox" id="casual"> Use daily conversational (bolchal) Hindi words</label>
     </div>
     <div class="card">
-      <button id="translateBtn" class="primary">Translate &amp; Download</button>
-      <div class="progress"><div id="tProgress" class="bar"></div></div>
-      <p id="tMsg" class="msg"></p>
+      <button id="translateFileBtn" class="primary">Translate File &amp; Download</button>
+      <div class="progress"><div id="tfProgress" class="bar"></div></div>
+      <p id="tfMsg" class="msg"></p>
     </div>
     <div class="card">
       <label>Or type/paste text manually</label>
@@ -78,55 +119,41 @@
       <button id="manualBtn" class="primary" style="margin-top:8px">Translate Text</button>
       <textarea id="manualOut" rows="6" readonly placeholder="Translation..." style="margin-top:8px"></textarea>
     </div>
+  </section>
+
+  <!-- TOOLS -->
+  <section id="tab-tools" class="panel">
     <div class="card">
-      <label>Preview</label>
-      <textarea id="preview" rows="12" readonly placeholder="Translated subtitles preview..."></textarea>
+      <h2>Image Compressor</h2>
+      <input type="file" id="compFile" accept="image/*">
+      <label>Quality (10-95)</label>
+      <input type="number" id="compQuality" value="70" min="10" max="95">
+      <button id="compBtn" class="primary" style="margin-top:8px">Compress &amp; Download</button>
+      <p id="compMsg" class="msg"></p>
+    </div>
+    <div class="card">
+      <h2>PDF Merger</h2>
+      <input type="file" id="mergeFiles" accept=".pdf" multiple>
+      <button id="mergeBtn" class="primary" style="margin-top:8px">Merge &amp; Download</button>
+      <p id="mergeMsg" class="msg"></p>
+    </div>
+    <div class="card">
+      <h2>PDF Splitter</h2>
+      <input type="file" id="splitFile" accept=".pdf">
+      <label>Pages (e.g. 1-3,5)</label>
+      <input type="text" id="splitPages" placeholder="1-3,5">
+      <button id="splitBtn" class="primary" style="margin-top:8px">Split &amp; Download</button>
+      <p id="splitMsg" class="msg"></p>
     </div>
   </section>
-  <section id="tab-convert" class="panel">
-    <div class="card">
-      <label>Any file</label>
-      <input type="file" id="convFile">
-    </div>
-    <div class="card">
-      <label>Target format</label>
-      <select id="targetFmt">
-        <option value="mp4">mp4 (video)</option>
-        <option value="mkv">mkv (video)</option>
-        <option value="webm">webm (video)</option>
-        <option value="avi">avi (video)</option>
-        <option value="mov">mov (video)</option>
-        <option value="mp3">mp3 (audio)</option>
-        <option value="m4a">m4a (audio)</option>
-        <option value="wav">wav (audio)</option>
-        <option value="ogg">ogg (audio)</option>
-        <option value="aac">aac (audio)</option>
-        <option value="flac">flac (audio)</option>
-        <option value="png">png (image)</option>
-        <option value="jpg">jpg (image)</option>
-        <option value="webp">webp (image)</option>
-        <option value="gif">gif (image)</option>
-        <option value="bmp">bmp (image)</option>
-      </select>
-    </div>
-    <div class="card">
-      <button id="convertBtn" class="primary">Convert &amp; Download</button>
-      <div class="progress"><div id="cProgress" class="bar"></div></div>
-      <p id="cMsg" class="msg"></p>
-    </div>
-    <div class="card">
-      <p class="hint">Powered by ffmpeg.wasm (runs in browser, offline after first load).</p>
-    </div>
-  </section>
+
   <section id="tab-about" class="panel">
     <div class="card">
-      <h2>About</h2>
-      <p>Format &amp; Translate works as a web app and installable PWA, offline-capable after first load. Translate subtitle files (SRT/ASS/VTT) between languages with optional daily conversational Hindi. Convert media/images between formats locally.</p>
+      <h2>About FileMorph</h2>
+      <p>All-in-One File Converter &amp; Translator. Format change karo aur file translate karo. Web + installable PWA.</p>
     </div>
   </section>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

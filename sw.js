@@ -1,4 +1,4 @@
-const CACHE = "ft-v1";
+const CACHE = "ft-v4";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.json"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -8,12 +8,24 @@ self.addEventListener("activate", (e) => {
 });
 self.addEventListener("fetch", (e) => {
   const req = e.request;
-  if (req.method !== "GET") return;
+  if (req.method !== "GET") {
+    e.respondWith(fetch(req));
+    return;
+  }
+  if (new URL(req.url).pathname.startsWith("/api/")) {
+    e.respondWith(fetch(req));
+    return;
+  }
   e.respondWith(
-    caches.match(req).then(cached => cached || fetch(req).then(res => {
-      const clone = res.clone();
-      caches.open(CACHE).then(c => c.put(req, clone)).catch(()=>{});
-      return res;
-    }).catch(() => cached))
+    caches.match(req).then(cached => {
+      if (cached) return cached;
+      return fetch(req).then(res => {
+        if (res && res.status === 200 && res.type === "basic") {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(req, clone)).catch(()=>{});
+        }
+        return res;
+      }).catch(() => new Response("", { status: 503, statusText: "Offline" }));
+    })
   );
 });

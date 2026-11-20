@@ -1,6 +1,6 @@
 {
-  "name": "Format & Translate",
-  "short_name": "FormatTranslate",
+  "name": "FileMorph",
+  "short_name": "FileMorph",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0b1220",
