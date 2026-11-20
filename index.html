@@ -23,7 +23,6 @@
   <button class="tab" data-tab="about">About</button>
 </nav>
 <main>
-  <!-- CONVERT -->
   <section id="tab-convert" class="panel active">
     <div class="card">
       <label>File choose karo</label>
@@ -61,8 +60,6 @@
       <p id="cMsg" class="msg"></p>
     </div>
   </section>
-
-  <!-- TRANSLATE -->
   <section id="tab-translate" class="panel">
     <div class="card">
       <label>File (PDF, Word, TXT, SRT, VTT, ASS)</label>
@@ -120,8 +117,6 @@
       <textarea id="manualOut" rows="6" readonly placeholder="Translation..." style="margin-top:8px"></textarea>
     </div>
   </section>
-
-  <!-- TOOLS -->
   <section id="tab-tools" class="panel">
     <div class="card">
       <h2>Image Compressor</h2>
@@ -146,7 +141,6 @@
       <p id="splitMsg" class="msg"></p>
     </div>
   </section>
-
   <section id="tab-about" class="panel">
     <div class="card">
       <h2>About FileMorph</h2>
@@ -154,6 +148,8 @@
     </div>
   </section>
 </main>
-<script src="app.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
