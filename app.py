@@ -15,16 +15,38 @@ def home():
 def health():
     return jsonify({"status": "ok", "message": "FileMorph Backend Live Hai!"})
 
-# --- 1. TRANSLATE ---
+# --- 1. TRANSLATE - Ab har naam pakdega ---
 @app.route('/api/translate-text', methods=['POST'])
 def translate_text():
     try:
-        data = request.get_json(force=True, silent=True) or {}
-        text = data.get('text', '') or data.get('input', '') or ''
-        target = data.get('target_lang') or data.get('target') or data.get('to') or data.get('lang') or 'hi'
-        source = data.get('source_lang') or data.get('source') or data.get('from') or 'auto'
-        if not text.strip():
-            return jsonify({"error": "Text khali hai"}), 400
+        data = {}
+        # JSON se try karo
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+        # Form se bhi try karo
+        if not data:
+            data = request.form.to_dict() or {}
+        # Agar raw text aaya ho to
+        if not data and request.data:
+            try:
+                import json
+                data = json.loads(request.data.decode('utf-8'))
+            except:
+                data = {"text": request.data.decode('utf-8')}
+
+        # Saare possible naam - jo milega wo le lega
+        text = ""
+        for key in ['text','input','content','q','query','sentence','sourceText','originalText','inputText','source_text','toTranslate','data']:
+            if data.get(key):
+                text = str(data.get(key))
+                break
+        
+        target = data.get('target_lang') or data.get('target') or data.get('to') or data.get('lang') or data.get('targetLanguage') or 'hi'
+        source = data.get('source_lang') or data.get('source') or data.get('from') or data.get('sourceLanguage') or 'auto'
+
+        if not text or not text.strip():
+            return jsonify({"error": "Text khali hai", "received": data}), 400
+
         from deep_translator import GoogleTranslator
         translated = GoogleTranslator(source=source, target=target).translate(text)
         return jsonify({"success": True, "translatedText": translated, "translated_text": translated, "target": target})
@@ -35,21 +57,15 @@ def translate_text():
 @app.route('/api/compress-image', methods=['POST'])
 def compress_image():
     try:
-        # File kisi bhi naam se aaye - file, image, photo
         file = request.files.get('file') or request.files.get('image') or request.files.get('photo')
         if not file:
             return jsonify({"error": "Image file nahi mili"}), 400
-
-        # Quality Frontend se aaye to wahi, nahi to 60%
         try:
             quality = int(request.form.get('quality', 60))
         except:
             quality = 60
-        if quality < 10: quality = 10
-        if quality > 95: quality = 95
-
+        quality = max(10, min(95, quality))
         img = Image.open(file.stream)
-        # PNG me transparency hoti hai, JPEG me nahi - isliye white background
         if img.mode in ("RGBA", "LA", "P"):
             bg = Image.new("RGB", img.size, (255, 255, 255))
             if img.mode == "P":
@@ -58,17 +74,76 @@ def compress_image():
             img = bg
         elif img.mode != "RGB":
             img = img.convert("RGB")
-
         output = io.BytesIO()
         img.save(output, format="JPEG", quality=quality, optimize=True)
         output.seek(0)
-
-        # Frontend ko file bhej rahe hai
         return send_file(output, mimetype="image/jpeg", as_attachment=True, download_name="compressed.jpg")
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Baaki API ke liye
+# --- 3. CONVERT - Sab kuch ---
+@app.route('/api/convert', methods=['POST'])
+def convert():
+    try:
+        file = request.files.get('file') or request.files.get('image') or request.files.get('document')
+        if not file:
+            return jsonify({"error": "File nahi mili"}), 400
+
+        # Target format kya chahiye - jpg, png, webp, pdf, txt
+        target = (request.form.get('target') or request.form.get('format') or request.form.get('to') or request.form.get('outputFormat') or 'png').lower().replace('.', '')
+        filename = file.filename or "file"
+        name = os.path.splitext(filename)[0]
+
+        # Agar Image hai to Image me Convert karo
+        try:
+            img = Image.open(file.stream)
+            file.stream.seek(0)
+            is_image = True
+        except:
+            is_image = False
+
+        if is_image:
+            if target in ['jpg', 'jpeg']:
+                fmt = 'JPEG'
+                out_name = name + '.jpg'
+                mime = 'image/jpeg'
+            elif target in ['webp']:
+                fmt = 'WEBP'
+                out_name = name + '.webp'
+                mime = 'image/webp'
+            else:
+                fmt = 'PNG'
+                out_name = name + '.png'
+                mime = 'image/png'
+
+            if img.mode in ("RGBA", "LA", "P") and fmt == 'JPEG':
+                bg = Image.new("RGB", img.size, (255, 255, 255))
+                if img.mode == "P":
+                    img = img.convert("RGBA")
+                bg.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
+                img = bg
+            elif img.mode != "RGB" and fmt == 'JPEG':
+                img = img.convert("RGB")
+
+            output = io.BytesIO()
+            img.save(output, format=fmt)
+            output.seek(0)
+            return send_file(output, mimetype=mime, as_attachment=True, download_name=out_name)
+
+        # Agar PDF hai aur TXT chahiye
+        if filename.lower().endswith('.pdf') and target == 'txt':
+            import fitz
+            doc = fitz.open(stream=file.read(), filetype="pdf")
+            txt = ""
+            for page in doc:
+                txt += page.get_text() + "\n"
+            output = io.BytesIO(txt.encode('utf-8'))
+            return send_file(output, mimetype="text/plain", as_attachment=True, download_name=name + ".txt")
+
+        return jsonify({"error": "Is file ko " + target + " me convert nahi kar sakte"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def api_fallback(path):
     return jsonify({"error": "API /api/" + path + " abhi bana nahi hai"}), 404
