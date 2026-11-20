@@ -16,7 +16,7 @@ def home():
 def health():
     return jsonify({"status": "ok", "message": "FileMorph Backend Live Hai!"})
 
-# --- 1. TRANSLATE - Ab Google Fail hoga to Backup chalega ---
+# --- 1. TRANSLATE - Ab MyMemory ka naam bhi thik hai ---
 @app.route('/api/translate-text', methods=['POST'])
 def translate_text():
     try:
@@ -41,33 +41,48 @@ def translate_text():
         target = data.get('target_lang') or data.get('target') or data.get('to') or data.get('lang') or data.get('targetLanguage') or 'hi'
         source = data.get('source_lang') or data.get('source') or data.get('from') or data.get('sourceLanguage') or 'auto'
         if source == 'auto':
-            source = 'en'  # MyMemory ko 'auto' samajh nahi aata, isliye en kar diya
+            source = 'en'
 
         if not text or not text.strip():
             return jsonify({"error": "Text khali hai"}), 400
 
+        # MyMemory ke liye Language ka Poora Naam
+        MYMEMORY_MAP = {
+            'en': 'en-GB', 'hi': 'hi-IN', 'es': 'es-ES', 'fr': 'fr-FR', 'de': 'de-DE',
+            'it': 'it-IT', 'pt': 'pt-PT', 'ru': 'ru-RU', 'ja': 'ja-JP', 'ko': 'ko-KR',
+            'zh': 'zh-CN', 'ar': 'ar-SA', 'bn': 'bn-IN', 'ta': 'ta-IN', 'te': 'te-IN',
+            'mr': 'mr-IN', 'gu': 'gu-IN', 'pa': 'pa-IN', 'ur': 'ur-PK', 'ne': 'ne-NP',
+            'nl': 'nl-NL', 'sv': 'sv-SE', 'pl': 'pl-PL', 'tr': 'tr-TR', 'th': 'th-TH',
+            'vi': 'vi-VN', 'id': 'id-ID', 'ms': 'ms-MY', 'kn': 'kn-IN', 'ml': 'ml-IN',
+            'or': 'or-IN', 'as': 'as-IN', 'sa': 'sa-IN'
+        }
+        def to_mymemory(code):
+            if '-' in str(code):
+                return code
+            return MYMEMORY_MAP.get(str(code).lower(), str(code))
+
         translated = None
         last_error = ""
 
-        # TRY 1: Google (Sabse Best)
+        # TRY 1: Google
         try:
             from deep_translator import GoogleTranslator
-            translated = GoogleTranslator(source='auto' if source=='en' else source, target=target).translate(text)
+            translated = GoogleTranslator(source='auto', target=target).translate(text)
         except Exception as e:
             last_error = str(e)
             print("Google fail:", e)
             time.sleep(1)
 
-        # TRY 2: MyMemory (Free, No Limit) - Agar Google fail hua to
+        # TRY 2: MyMemory - Ab sahi naam se
         if not translated:
             try:
                 from deep_translator import MyMemoryTranslator
-                translated = MyMemoryTranslator(source=source, target=target).translate(text)
+                translated = MyMemoryTranslator(source=to_mymemory(source), target=to_mymemory(target)).translate(text)
             except Exception as e:
                 last_error = str(e)
                 print("MyMemory fail:", e)
 
-        # TRY 3: LibreTranslate (Aur ek Backup)
+        # TRY 3: LibreTranslate
         if not translated:
             try:
                 import requests
