@@ -16,7 +16,6 @@ def home():
 def health():
     return jsonify({"status": "ok", "message": "FileMorph Backend Live Hai!"})
 
-# --- 1. TRANSLATE - Ab Library nahi, Sidha API ---
 @app.route('/api/translate-text', methods=['POST'])
 def translate_text():
     try:
@@ -37,99 +36,10 @@ def translate_text():
             if data.get(key):
                 text = str(data.get(key))
                 break
-        
-        target = data.get('target_lang') or data.get('target') or data.get('to') or data.get('lang') or data.get('targetLanguage') or 'hi'
-        source = data.get('source_lang') or data.get('source') or data.get('from') or data.get('sourceLanguage') or 'auto'
-        if source == 'auto':
-            source = 'en'
-        # MyMemory ko 'en-GB' jaisa chahiye, 'en' nahi
-        # Isliye short ko long me badlo
-        MAP = {'en':'en-GB','hi':'hi-IN','es':'es-ES','fr':'fr-FR','de':'de-DE','it':'it-IT','pt':'pt-PT','ru':'ru-RU','ja':'ja-JP','ko':'ko-KR','zh':'zh-CN','ar':'ar-SA','bn':'bn-IN','ta':'ta-IN','te':'te-IN','mr':'mr-IN','gu':'gu-IN','pa':'pa-IN','ur':'ur-PK','ne':'ne-NP'}
-        mm_source = MAP.get(source.lower(), source)
-        mm_target = MAP.get(target.lower(), target)
 
-        if not text or not text.strip():
-            return jsonify({"error": "Text khali hai"}), 400
-
-        import requests
-        translated = None
-        last_error = ""
-
-        # TRY 1: MyMemory Direct API - Sabse Pehle, No Limit
-        try:
-            r = requests.get("https://api.mymemory.translated.net/get", params={
-                "q": text,
-                "langpair": f"{source}|{target}"
-            }, timeout=10)
-            if r.status_code == 200:
-                j = r.json()
-                t = j.get('responseData', {}).get('translatedText', '')
-                # Agar MyMemory ne same hi wapas diya to matlab usko nahi aata, agle pe jao
-                if t and t.lower() != text.lower():
-                    translated = t
-                else:
-                    # Kabhi-kabhi matches me milta hai
-                    matches = j.get('matches', [])
-                    for m in matches:
-                        if m.get('translation') and m.get('translation').lower() != text.lower():
-                            translated = m.get('translation')
-                            break
-        except Exception as e:
-            last_error = str(e)
-
-        # TRY 2: Google ka Free Wala Link (Library wala nahi)
-        if not translated:
-            try:
-                r = requests.get("https://translate.googleapis.com/translate_a/single", params={
-                    "client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text
-                }, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-                if r.status_code == 200:
-                    j = r.json()
-                    translated = "".join([x[0] for x in j[0] if x[0]])
-            except Exception as e:
-                last_error = str(e)
-
-        # TRY 3: LibreTranslate
-        if not translated:
-            try:
-                r = requests.post("https://libretranslate.com/translate", data={
-                    "q": text, "source": source, "target": target, "format": "text"
-                }, timeout=10)
-                if r.status_code == 200:
-                    translated = r.json().get('translatedText')
-            except Exception as e:
-                last_error = str(e)
-
-        if not translated:
-            return jsonify({"error": "Server Error: Abhi teeno Translator busy hai. 1 Minute ruk ke try karo. " + last_error}), 429
-
-# --- 1. TRANSLATE - Final, Language Naam Fix + Detail Error ---
-@app.route('/api/translate-text', methods=['POST'])
-def translate_text():
-    try:
-        data = {}
-        if request.is_json:
-            data = request.get_json(silent=True) or {}
-        if not data:
-            data = request.form.to_dict() or {}
-        if not data and request.data:
-            try:
-                import json
-                data = json.loads(request.data.decode('utf-8'))
-            except:
-                data = {"text": request.data.decode('utf-8')}
-
-        text = ""
-        for key in ['text','input','content','q','query','sentence','sourceText','originalText','inputText','source_text','toTranslate','data']:
-            if data.get(key):
-                text = str(data.get(key))
-                break
-        
         raw_target = str(data.get('target_lang') or data.get('target') or data.get('to') or data.get('lang') or data.get('targetLanguage') or 'hi')
         raw_source = str(data.get('source_lang') or data.get('source') or data.get('from') or data.get('sourceLanguage') or 'auto')
 
-        # --- Language Naam -> Code ---
-        # Hindi, hindi, HINDI, hi, hi-IN - sabko 'hi' bana dega
         LANG_MAP = {
             'hindi':'hi','english':'en','spanish':'es','french':'fr','german':'de','italian':'it',
             'portuguese':'pt','russian':'ru','japanese':'ja','korean':'ko','chinese':'zh','arabic':'ar',
@@ -141,11 +51,11 @@ def translate_text():
             v = str(v).lower().strip()
             if v in LANG_MAP:
                 return LANG_MAP[v]
-            if '-' in v:  # hi-IN -> hi
+            if '-' in v:
                 v = v.split('-')[0]
             if '_' in v:
                 v = v.split('_')[0]
-            return v[:2] if len(v) > 2 and v not in LANG_MAP else v
+            return v
 
         source = clean_lang(raw_source)
         target = clean_lang(raw_target)
@@ -157,11 +67,8 @@ def translate_text():
         translated = None
         errors = []
 
-        # TRY 1: MyMemory Direct
         try:
-            r = requests.get("https://api.mymemory.translated.net/get", params={
-                "q": text, "langpair": f"{source}|{target}", "de": "test@test.com"
-            }, timeout=15)
+            r = requests.get("https://api.mymemory.translated.net/get", params={"q": text, "langpair": f"{source}|{target}", "de": "test@test.com"}, timeout=15)
             if r.status_code == 200:
                 j = r.json()
                 t = j.get('responseData', {}).get('translatedText', '')
@@ -173,29 +80,25 @@ def translate_text():
                             translated = m.get('translation')
                             break
                     if not translated:
-                        errors.append(f"MyMemory: same text wapas aaya - {j.get('responseStatus')}")
+                        errors.append("MyMemory: same text")
             else:
-                errors.append(f"MyMemory: Status {r.status_code} - {r.text[:100]}")
+                errors.append(f"MyMemory: Status {r.status_code}")
         except Exception as e:
             errors.append(f"MyMemory: {str(e)[:100]}")
 
-        # TRY 2: Lingva - Google ka Free Proxy, No Limit
         if not translated:
             try:
                 r = requests.get(f"https://lingva.ml/api/v1/{source}/{target}/{requests.utils.quote(text)}", timeout=15, headers={"User-Agent": "Mozilla/5.0"})
                 if r.status_code == 200:
                     translated = r.json().get('translation')
                 else:
-                    errors.append(f"Lingva: Status {r.status_code} - {r.text[:100]}")
+                    errors.append(f"Lingva: Status {r.status_code}")
             except Exception as e:
                 errors.append(f"Lingva: {str(e)[:100]}")
 
-        # TRY 3: Google GTX Direct
         if not translated:
             try:
-                r = requests.get("https://translate.googleapis.com/translate_a/single", params={
-                    "client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text
-                }, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+                r = requests.get("https://translate.googleapis.com/translate_a/single", params={"client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text}, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
                 if r.status_code == 200:
                     j = r.json()
                     translated = "".join([x[0] for x in j[0] if x[0]])
@@ -211,7 +114,6 @@ def translate_text():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- 2. COMPRESS IMAGE ---
 @app.route('/api/compress-image', methods=['POST'])
 def compress_image():
     try:
@@ -239,7 +141,6 @@ def compress_image():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- 3. CONVERT ---
 @app.route('/api/convert', methods=['POST'])
 def convert():
     try:
@@ -257,11 +158,17 @@ def convert():
             is_image = False
         if is_image:
             if target in ['jpg', 'jpeg']:
-                fmt = 'JPEG'; out_name = name + '.jpg'; mime = 'image/jpeg'
+                fmt = 'JPEG'
+                out_name = name + '.jpg'
+                mime = 'image/jpeg'
             elif target in ['webp']:
-                fmt = 'WEBP'; out_name = name + '.webp'; mime = 'image/webp'
+                fmt = 'WEBP'
+                out_name = name + '.webp'
+                mime = 'image/webp'
             else:
-                fmt = 'PNG'; out_name = name + '.png'; mime = 'image/png'
+                fmt = 'PNG'
+                out_name = name + '.png'
+                mime = 'image/png'
             if img.mode in ("RGBA", "LA", "P") and fmt == 'JPEG':
                 bg = Image.new("RGB", img.size, (255, 255, 255))
                 if img.mode == "P":
