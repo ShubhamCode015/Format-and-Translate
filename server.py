@@ -401,7 +401,11 @@ def convert_file(inp, target, outdir):
         im = Image.open(inp)
         if target in ("jpg","jpeg"):
             im = im.convert("RGB")
-        im.save(outp, format={"jpg":"JPEG","jpeg":"JPEG"}.get(target, target.upper()))
+        fmt_map = {"jpg":"JPEG","jpeg":"JPEG","tif":"TIFF","tiff":"TIFF","heic":"HEIF","heif":"HEIF"}
+        fmt = fmt_map.get(target, target.upper())
+        if fmt == "HEIF" and im.mode not in ("RGB","RGBA"):
+            im = im.convert("RGB")
+        im.save(outp, format=fmt)
         return outp
 
     # image -> pdf
@@ -413,10 +417,25 @@ def convert_file(inp, target, outdir):
     # pdf -> image (first page or all pages zipped)
     if ext == "pdf" and target in img_exts:
         doc = fitz.open(inp)
+        fmt_map = {"jpg":"JPEG","jpeg":"JPEG","tif":"TIFF","tiff":"TIFF","heic":"HEIF","heif":"HEIF"}
+        pil_fmt = fmt_map.get(target, target.upper())
+        def _save_pix(pix, path):
+            tmp = path.with_name(path.stem + "_tmp.png")
+            pix.save(str(tmp))
+            im = Image.open(tmp)
+            if pil_fmt in ("JPEG","HEIF") and im.mode not in ("RGB","RGBA"):
+                im = im.convert("RGB")
+            if pil_fmt == "JPEG":
+                im = im.convert("RGB")
+            im.save(path, format=pil_fmt)
+            try:
+                tmp.unlink()
+            except Exception:
+                pass
         if len(doc) == 1:
             pg = doc[0]
             pix = pg.get_pixmap(dpi=150)
-            pix.save(str(outp))
+            _save_pix(pix, outp)
             doc.close()
             return outp
         # multiple pages -> zip
@@ -425,7 +444,7 @@ def convert_file(inp, target, outdir):
             for i, pg in enumerate(doc):
                 pix = pg.get_pixmap(dpi=150)
                 img_path = outdir / f"page_{i+1}.{target}"
-                pix.save(str(img_path))
+                _save_pix(pix, img_path)
                 z.write(img_path, img_path.name)
         doc.close()
         return zp
@@ -478,9 +497,11 @@ def convert_file(inp, target, outdir):
 
     # media via ffmpeg
     media_exts = {"mp4","mkv","webm","avi","mov","mp3","m4a","wav","ogg","aac","flac"}
-    if ext in media_exts or target in media_exts:
+    if ext in media_exts and target in media_exts:
         run_ffmpeg(inp, outp)
         return outp
+    if ext in media_exts or target in media_exts:
+        raise ValueError(f"Unsupported conversion: {ext} -> {target}")
 
     # pdf -> txt
     if ext == "pdf" and target == "txt":
@@ -498,7 +519,7 @@ def convert_file(inp, target, outdir):
         return outp
 
     # generic text-based conversions
-    text_exts = {"txt", "pdf", "docx", "csv", "xlsx"}
+    text_exts = {"txt", "pdf", "docx", "csv", "xlsx", "srt", "vtt", "ass"}
     if ext in text_exts and target in text_exts:
         # extract text
         if ext == "pdf":
@@ -512,7 +533,7 @@ def convert_file(inp, target, outdir):
             for row in ws.iter_rows(values_only=True):
                 lines.append("\t".join("" if c is None else str(c) for c in row))
             text = "\n".join(lines)
-        elif ext == "csv":
+        elif ext in ("csv","srt","vtt","ass"):
             text = inp.read_text(encoding="utf-8", errors="ignore")
         else:
             text = inp.read_text(encoding="utf-8", errors="ignore")
