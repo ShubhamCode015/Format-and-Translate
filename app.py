@@ -16,7 +16,7 @@ def home():
 def health():
     return jsonify({"status": "ok", "message": "FileMorph Backend Live Hai!"})
 
-# --- 1. TRANSLATE - Ab MyMemory ka naam bhi thik hai ---
+# --- 1. TRANSLATE - Ab Library nahi, Sidha API ---
 @app.route('/api/translate-text', methods=['POST'])
 def translate_text():
     try:
@@ -42,50 +42,56 @@ def translate_text():
         source = data.get('source_lang') or data.get('source') or data.get('from') or data.get('sourceLanguage') or 'auto'
         if source == 'auto':
             source = 'en'
+        # MyMemory ko 'en-GB' jaisa chahiye, 'en' nahi
+        # Isliye short ko long me badlo
+        MAP = {'en':'en-GB','hi':'hi-IN','es':'es-ES','fr':'fr-FR','de':'de-DE','it':'it-IT','pt':'pt-PT','ru':'ru-RU','ja':'ja-JP','ko':'ko-KR','zh':'zh-CN','ar':'ar-SA','bn':'bn-IN','ta':'ta-IN','te':'te-IN','mr':'mr-IN','gu':'gu-IN','pa':'pa-IN','ur':'ur-PK','ne':'ne-NP'}
+        mm_source = MAP.get(source.lower(), source)
+        mm_target = MAP.get(target.lower(), target)
 
         if not text or not text.strip():
             return jsonify({"error": "Text khali hai"}), 400
 
-        # MyMemory ke liye Language ka Poora Naam
-        MYMEMORY_MAP = {
-            'en': 'en-GB', 'hi': 'hi-IN', 'es': 'es-ES', 'fr': 'fr-FR', 'de': 'de-DE',
-            'it': 'it-IT', 'pt': 'pt-PT', 'ru': 'ru-RU', 'ja': 'ja-JP', 'ko': 'ko-KR',
-            'zh': 'zh-CN', 'ar': 'ar-SA', 'bn': 'bn-IN', 'ta': 'ta-IN', 'te': 'te-IN',
-            'mr': 'mr-IN', 'gu': 'gu-IN', 'pa': 'pa-IN', 'ur': 'ur-PK', 'ne': 'ne-NP',
-            'nl': 'nl-NL', 'sv': 'sv-SE', 'pl': 'pl-PL', 'tr': 'tr-TR', 'th': 'th-TH',
-            'vi': 'vi-VN', 'id': 'id-ID', 'ms': 'ms-MY', 'kn': 'kn-IN', 'ml': 'ml-IN',
-            'or': 'or-IN', 'as': 'as-IN', 'sa': 'sa-IN'
-        }
-        def to_mymemory(code):
-            if '-' in str(code):
-                return code
-            return MYMEMORY_MAP.get(str(code).lower(), str(code))
-
+        import requests
         translated = None
         last_error = ""
 
-        # TRY 1: Google
+        # TRY 1: MyMemory Direct API - Sabse Pehle, No Limit
         try:
-            from deep_translator import GoogleTranslator
-            translated = GoogleTranslator(source='auto', target=target).translate(text)
+            r = requests.get("https://api.mymemory.translated.net/get", params={
+                "q": text,
+                "langpair": f"{source}|{target}"
+            }, timeout=10)
+            if r.status_code == 200:
+                j = r.json()
+                t = j.get('responseData', {}).get('translatedText', '')
+                # Agar MyMemory ne same hi wapas diya to matlab usko nahi aata, agle pe jao
+                if t and t.lower() != text.lower():
+                    translated = t
+                else:
+                    # Kabhi-kabhi matches me milta hai
+                    matches = j.get('matches', [])
+                    for m in matches:
+                        if m.get('translation') and m.get('translation').lower() != text.lower():
+                            translated = m.get('translation')
+                            break
         except Exception as e:
             last_error = str(e)
-            print("Google fail:", e)
-            time.sleep(1)
 
-        # TRY 2: MyMemory - Ab sahi naam se
+        # TRY 2: Google ka Free Wala Link (Library wala nahi)
         if not translated:
             try:
-                from deep_translator import MyMemoryTranslator
-                translated = MyMemoryTranslator(source=to_mymemory(source), target=to_mymemory(target)).translate(text)
+                r = requests.get("https://translate.googleapis.com/translate_a/single", params={
+                    "client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text
+                }, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+                if r.status_code == 200:
+                    j = r.json()
+                    translated = "".join([x[0] for x in j[0] if x[0]])
             except Exception as e:
                 last_error = str(e)
-                print("MyMemory fail:", e)
 
         # TRY 3: LibreTranslate
         if not translated:
             try:
-                import requests
                 r = requests.post("https://libretranslate.com/translate", data={
                     "q": text, "source": source, "target": target, "format": "text"
                 }, timeout=10)
@@ -95,7 +101,7 @@ def translate_text():
                 last_error = str(e)
 
         if not translated:
-            return jsonify({"error": "Server Error: Google ne limit laga di hai. 1 Minute ruk ke try karo. " + last_error}), 429
+            return jsonify({"error": "Server Error: Abhi teeno Translator busy hai. 1 Minute ruk ke try karo. " + last_error}), 429
 
         return jsonify({"success": True, "translatedText": translated, "translated_text": translated, "target": target})
     except Exception as e:
